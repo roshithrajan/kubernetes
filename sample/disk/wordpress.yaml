@@ -1,0 +1,113 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mywpvolume1
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: azurefile1
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysqlvolume2
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: azurefile1
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+#apiVersion: v1
+#kind: Secret
+#metadata:
+#  name: wordpress-secrets
+#type: Opaque
+#stringData:
+#  db-password: mypass
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress
+      annotations:
+        backup.velero.io/backup-volumes: mywpvolume1,mysqlvolume2
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:4-php7.0
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "touch /var/www/html/roland"]
+        ports:
+        - name: http-port
+          containerPort: 80
+        env:
+          - name: WORDPRESS_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: my-password
+                key: db-password
+          - name: WORDPRESS_DB_HOST
+            value: 127.0.0.1
+        volumeMounts:
+        - name: mywpvolume1
+          mountPath: "/var/www/html"
+      - name: mysql
+        image: mariadb
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "touch /var/lib/mysql/roland"]
+        ports:
+        - name: mysql-port
+          containerPort: 3306
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: my-password
+                key: db-password
+        volumeMounts:
+        - name: mysqlvolume2
+          mountPath: "/var/lib/mysql"
+      volumes:
+      - name: mysqlvolume2
+        persistentVolumeClaim:
+          claimName: mysqlvolume2
+      - name: mywpvolume1
+        persistentVolumeClaim:
+          claimName: mywpvolume1
+          
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.beta.kubernetes.io/azure-dns-label-name: mywpapp
+  name: wordpress
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: wordpress
