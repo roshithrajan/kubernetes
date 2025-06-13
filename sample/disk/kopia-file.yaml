@@ -1,0 +1,95 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kopia-file
+
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: azurefile-sc
+provisioner: kubernetes.io/azure-file
+parameters:
+  skuName: Standard_LRS
+reclaimPolicy: Retain
+mountOptions:
+  - dir_mode=0777
+  - file_mode=0777
+  - uid=0
+  - gid=0
+allowVolumeExpansion: true
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: azurefile-pvc
+  namespace: kopia-file
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: azurefile-sc
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-azurefile
+  namespace: kopia-file
+  annotations:
+    backup.velero.io/backup-volumes: azurefile-vol
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-azurefile
+  template:
+    metadata:
+      labels:
+        app: nginx-azurefile
+      annotations:
+        backup.velero.io/backup-volumes: azurefile-vol
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        lifecycle:
+          postStart:
+            exec:
+              command:
+                [
+                  "/bin/sh",
+                  "-c",
+                  "if [ ! -f /usr/share/nginx/html/index.html ]; then echo '<html><head><title>Welcome</title></head><body><h1>Azure File Share NGINX</h1><p>This is a test page served from Azure Files PVC in the <strong>kopia-file</strong> namespace.</p></body></html>' > /usr/share/nginx/html/index.html; fi"
+                ]
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: azurefile-vol
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: azurefile-vol
+        persistentVolumeClaim:
+          claimName: azurefile-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-lb
+  namespace: kopia-file
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+    service.beta.kubernetes.io/azure-load-balancer-internal-subnet: "dev-10711-ingress-aks-01-subnet"
+spec:
+  selector:
+    app: nginx-azurefile
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
