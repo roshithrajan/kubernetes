@@ -57,6 +57,15 @@ spec:
       containers:
       - name: nginx
         image: nginx
+        lifecycle:
+          postStart:
+            exec:
+              command:
+                [
+                  "/bin/sh",
+                  "-c",
+                  "if [ ! -f /usr/share/nginx/html/index.html ]; then echo '<html><head><title>Welcome</title></head><body><h1>Azure File Share NGINX</h1><p>This is a test page deployed on Azure Files PVC using Velero-compatible configuration.</p></body></html>' > /usr/share/nginx/html/index.html; fi"
+                ]
         ports:
         - containerPort: 80
         volumeMounts:
