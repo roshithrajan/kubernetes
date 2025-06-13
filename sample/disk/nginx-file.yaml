@@ -1,4 +1,10 @@
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: azure-filetest
+
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -19,6 +25,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: azurefile-pvc
+  namespace: azure-filetest
 spec:
   accessModes:
     - ReadWriteMany
@@ -32,6 +39,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-azurefile
+  namespace: azure-filetest
+  annotations:
+    backup.velero.io/backup-volumes: azurefile-vol
 spec:
   replicas: 1
   selector:
@@ -41,6 +51,8 @@ spec:
     metadata:
       labels:
         app: nginx-azurefile
+      annotations:
+        backup.velero.io/backup-volumes: azurefile-vol
     spec:
       containers:
       - name: nginx
